@@ -142,14 +142,34 @@ enum TokenStore {
     private static let configPath =
         (NSHomeDirectory() as NSString).appendingPathComponent("Library/Application Support/Claude/config.json")
 
+    /// The Electron safeStorage key is stable for the app's lifetime, so we read
+    /// the keychain only ONCE per launch and cache the derived AES key in memory.
+    /// Result: at most one keychain-permission prompt per launch — and none at all
+    /// after you click "Always Allow". The 60s refreshes only re-read the (free,
+    /// non-keychain) config.json file and re-decrypt in memory.
+    private static var cachedKey: [UInt8]?
+
     /// Reads + decrypts the current claude_code OAuth access token.
     static func current() -> Creds? {
         guard let data = FileManager.default.contents(atPath: configPath),
-              let cfg = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let pw = safeStorageKey() else { return nil }
-        let key = pbkdf2SHA1(password: [UInt8](pw), salt: Array("saltysalt".utf8), iterations: 1003, keyLen: 16)
-        guard !key.isEmpty else { return nil }
+              let cfg = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if let key = derivedKey(), let c = decryptCreds(cfg, key: key) { return c }
+        // Cached key may be stale (app reinstalled / key rotated) — refresh once.
+        cachedKey = nil
+        if let key = derivedKey(), let c = decryptCreds(cfg, key: key) { return c }
+        return nil
+    }
 
+    private static func derivedKey() -> [UInt8]? {
+        if let k = cachedKey { return k }
+        guard let pw = safeStorageKey() else { return nil }
+        let k = pbkdf2SHA1(password: [UInt8](pw), salt: Array("saltysalt".utf8), iterations: 1003, keyLen: 16)
+        guard !k.isEmpty else { return nil }
+        cachedKey = k
+        return k
+    }
+
+    private static func decryptCreds(_ cfg: [String: Any], key: [UInt8]) -> Creds? {
         for cacheKey in ["oauth:tokenCacheV2", "oauth:tokenCache"] {
             guard let enc = cfg[cacheKey] as? String,
                   let plain = decryptSafeStorage(enc, key: key),

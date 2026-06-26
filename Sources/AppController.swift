@@ -122,6 +122,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         }
         opacity.submenu = sub
         menu.addItem(opacity)
+
+        let refresh = NSMenuItem(title: "刷新频率", action: nil, keyEquivalent: "")
+        let rsub = NSMenu()
+        for (label, secs) in [("30 秒", 30.0), ("1 分钟", 60.0), ("5 分钟", 300.0), ("15 分钟", 900.0)] {
+            let mi = NSMenuItem(title: label, action: #selector(setRefresh(_:)), keyEquivalent: "")
+            mi.target = self
+            mi.representedObject = secs
+            mi.state = abs(settings.refreshSeconds - secs) < 0.5 ? .on : .off
+            rsub.addItem(mi)
+        }
+        refresh.submenu = rsub
+        menu.addItem(refresh)
         menu.addItem(.separator())
 
         menu.addItem(toggle("开机自启动", #selector(toggleLogin), on: loginEnabled()))
@@ -164,6 +176,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
 
     @objc private func setOpacity(_ sender: NSMenuItem) {
         if let p = sender.representedObject as? Double { settings.opacity = p }
+    }
+
+    @objc private func setRefresh(_ sender: NSMenuItem) {
+        if let s = sender.representedObject as? Double { settings.refreshSeconds = s }
     }
 
     @objc private func resetPosition() { moveToBottomRight(); window.orderFrontRegardless() }
