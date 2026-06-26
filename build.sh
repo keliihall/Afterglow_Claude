@@ -48,7 +48,19 @@ PLIST
 
 echo "APPL????" > "$APP/Contents/PkgInfo"
 
-echo "→ ad-hoc code signing"
-codesign --force --deep --sign - "$APP" 2>/dev/null || echo "  (codesign skipped)"
+echo "→ code signing"
+SIGN_KC="$HOME/Library/Keychains/afterglow-codesign.keychain-db"
+SIGN_ID="Afterglow Local Signing"
+if security find-certificate -c "$SIGN_ID" "$SIGN_KC" >/dev/null 2>&1; then
+    security unlock-keychain -p "afterglow-signing" "$SIGN_KC" 2>/dev/null || true
+    if codesign --force --sign "$SIGN_ID" --keychain "$SIGN_KC" "$APP" 2>/dev/null; then
+        echo "  signed with stable identity: $SIGN_ID (keychain grant will persist across rebuilds)"
+    else
+        echo "  stable signing failed → ad-hoc"; codesign --force --sign - "$APP" 2>/dev/null || true
+    fi
+else
+    echo "  no stable identity yet — run ./setup-signing.sh once to avoid repeat keychain prompts; using ad-hoc"
+    codesign --force --sign - "$APP" 2>/dev/null || true
+fi
 
 echo "✓ built: $APP"
